@@ -1,0 +1,11 @@
+# Node modules
+node_modules/
+
+# Env file
+.env
+
+# Logs
+*.log
+
+# Optional: build folder (agar ho)
+dist/
