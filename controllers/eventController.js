@@ -9,14 +9,15 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { broadcastEventUpdate, broadcastEmergencyAlert } = require('../config/socket');
 
 const CATEGORIES = [
-  'Conference',
-  'Workshop',
-  'Seminar',
-  'Party',
-  'Concert',
-  'Exhibition',
+  'Music',
+  'Tech',
+  'Food',
   'Sports',
-  'Others',
+  'Art',
+  'Education',
+  'Business',
+  'Health',
+  'Other',
 ];
 
 // @desc    Create a new event

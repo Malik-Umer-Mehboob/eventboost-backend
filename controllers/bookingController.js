@@ -27,8 +27,29 @@ const initiateBooking = async (req, res) => {
       return res.status(400).json({ message: 'Organizers cannot purchase tickets for their own events' });
     }
 
-    if (event.soldTickets + quantity > event.ticketQuantity) {
+    const notifiedEntry = await require('../models/Waitlist').findOne({ 
+      event: event._id, 
+      user: req.user.id, 
+      status: 'notified' 
+    });
+
+    const availableTickets = event.ticketQuantity - event.soldTickets;
+
+    if (availableTickets < quantity) {
       return res.status(400).json({ message: 'Not enough tickets available' });
+    }
+
+    // If user is not notified but tickets are reserved for waitlist
+    if (!notifiedEntry) {
+      const notifiedCount = await require('../models/Waitlist').countDocuments({ 
+        event: event._id, 
+        status: 'notified' 
+      });
+      if (availableTickets - notifiedCount < quantity) {
+        return res.status(400).json({ 
+          message: 'The remaining tickets are reserved for waitlist users. Please join the waitlist to be notified when more spots open up.' 
+        });
+      }
     }
     const booking = await Booking.create({ 
       user: req.user.id, 
@@ -253,6 +274,13 @@ const stripeWebhook = async (req, res) => {
         link: `/tickets/my-tickets`,
         event: eventId
       });
+
+      // 9. Update Waitlist status if applicable
+      await require('../models/Waitlist').findOneAndUpdate(
+        { event: eventId, user: userId, status: 'notified' },
+        { status: 'converted' }
+      );
+      
       console.log('✅ STEP 5/5: Notifications triggered');
 
       console.log('🎉 SUCCESS: Webhook processing completed flawlessly.');
