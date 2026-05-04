@@ -89,6 +89,8 @@ app.use('/api/events',        require('./routes/eventRoutes'));
 app.use('/api/bookings',      require('./routes/bookingRoutes'));
 app.use('/api/tickets',       require('./routes/ticketRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/waitlist',      require('./routes/waitlistRoutes'));
+app.use('/api/reviews',       require('./routes/reviewRoutes'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'EventBoost Pro API is running.' });
@@ -108,6 +110,7 @@ if (!IS_SERVERLESS) {
   const http = require('http');
   const { initSocket } = require('./config/socket');
   const { startReminderCron } = require('./services/reminderScheduler');
+  const { startWaitlistCron } = require('./services/waitlistCron');
   const seedAdmin = require('./scripts/seedAdmin');
 
   const server = http.createServer(app);
@@ -120,6 +123,7 @@ if (!IS_SERVERLESS) {
     .then(() => seedAdmin())
     .then(() => {
       startReminderCron();
+      startWaitlistCron();
       server.listen(PORT, () =>
         console.log(
           `Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`

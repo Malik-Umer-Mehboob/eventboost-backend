@@ -25,7 +25,7 @@ router.get('/', protect, authorize('admin'), getAllEvents);
 router.delete('/:id', protect, authorize('admin', 'organizer'), deleteEvent); // Shared DELETE with check
 
 // User / Shared routes
-router.get('/public', protect, getPublicEvents);
+router.get('/public', getPublicEvents);
 router.get('/categories', getCategories);
 router.get('/:id', protect, getEventById);
 router.put('/:id', protect, authorize('admin', 'organizer'), upload.single('banner'), updateEvent);

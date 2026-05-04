@@ -86,7 +86,38 @@ const createEvent = async (req, res) => {
 // @access  Private (Admin only)
 const getAllEvents = async (req, res) => {
   try {
-    const events = await Event.find({}).populate('organizer createdBy', 'name email');
+    const { search, category, minPrice, maxPrice, city, startDate, endDate, sort } = req.query;
+
+    let filter = {};
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (category && category !== 'All') filter.category = category;
+    if (city) filter.location = { $regex: city, $options: 'i' };
+    
+    if (minPrice || maxPrice) {
+      filter.ticketPrice = {};
+      if (minPrice) filter.ticketPrice.$gte = Number(minPrice);
+      if (maxPrice) filter.ticketPrice.$lte = Number(maxPrice);
+    }
+    
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort === 'oldest') sortOption = { createdAt: 1 };
+    if (sort === 'price_low') sortOption = { ticketPrice: 1 };
+    if (sort === 'price_high') sortOption = { ticketPrice: -1 };
+    if (sort === 'date_soon') sortOption = { date: 1 };
+
+    const events = await Event.find(filter).sort(sortOption).populate('organizer createdBy', 'name email');
     res.json(events);
   } catch (error) {
     console.error('Error in getAllEvents:', error);
@@ -114,7 +145,38 @@ const getMyEvents = async (req, res) => {
 // @access  Private
 const getPublicEvents = async (req, res) => {
   try {
-    const events = await Event.find({}).populate('organizer createdBy', 'name');
+    const { search, category, minPrice, maxPrice, city, startDate, endDate, sort } = req.query;
+
+    let filter = { status: 'active' };
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (category && category !== 'All') filter.category = category;
+    if (city) filter.location = { $regex: city, $options: 'i' };
+    
+    if (minPrice || maxPrice) {
+      filter.ticketPrice = {};
+      if (minPrice) filter.ticketPrice.$gte = Number(minPrice);
+      if (maxPrice) filter.ticketPrice.$lte = Number(maxPrice);
+    }
+    
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort === 'oldest') sortOption = { createdAt: 1 };
+    if (sort === 'price_low') sortOption = { ticketPrice: 1 };
+    if (sort === 'price_high') sortOption = { ticketPrice: -1 };
+    if (sort === 'date_soon') sortOption = { date: 1 };
+
+    const events = await Event.find(filter).sort(sortOption).populate('organizer createdBy', 'name');
     res.json(events);
   } catch (error) {
     console.error('Error in getPublicEvents:', error);

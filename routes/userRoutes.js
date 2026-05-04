@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
-const { updateProfilePicture, getUserProfile, updateProfile } = require('../controllers/userController');
+const { updateProfilePicture, getUserProfile, updateProfile, getPublicProfile } = require('../controllers/userController');
 
 // @desc    Update User Profile (name only)
 // @route   PUT /api/users/profile
@@ -24,5 +24,10 @@ router.post('/profile/picture', protect, upload.single('profilePicture'), update
 router.get('/dashboard', protect, authorize('user'), (req, res) => {
     res.json({ message: 'Welcome to the User Dashboard' });
 });
+
+// @desc    Get Public Organizer Profile (no auth required)
+// @route   GET /api/users/public/:id
+// @access  Public
+router.get('/public/:id', getPublicProfile);
 
 module.exports = router;

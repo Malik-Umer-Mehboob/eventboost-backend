@@ -68,6 +68,14 @@ const eventSchema = new mongoose.Schema(
       enum: ['active', 'cancelled', 'resubmitted'],
       default: 'active',
     },
+    averageRating: {
+      type: Number,
+      default: 0,
+    },
+    totalReviews: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

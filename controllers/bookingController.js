@@ -10,6 +10,7 @@ const PDFDocument = require('pdfkit');
 const crypto = require('crypto');
 const { createNotification } = require('../services/notificationService');
 const { broadcastAttendeeCount, broadcastEventUpdate } = require('../config/socket');
+const { notifyNextInWaitlist } = require('../utils/waitlistNotifier');
 
 const initiateBooking = async (req, res) => {
   try {
@@ -346,6 +347,9 @@ const processRefundRollback = async (paymentIntentId) => {
 
         // 6. Send Email
         await sendRefundConfirmationEmail(transaction.user, event, booking);
+
+        // 7. Waitlist: Notify next person in line
+        await notifyNextInWaitlist(event._id);
     }
   }
 };
