@@ -17,7 +17,17 @@ const eventSchema = new mongoose.Schema(
     },
     location: {
       type: String,
-      required: [true, 'Please add a location'],
+      required: false,
+      trim: true,
+    },
+    venue: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+    endDate: {
+      type: Date,
+      required: false,
     },
     category: {
       type: String,

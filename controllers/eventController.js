@@ -30,11 +30,13 @@ const createEvent = async (req, res) => {
       description, 
       date, 
       location, 
+      venue,
       category, 
       ticketPrice, 
       ticketQuantity, 
       bannerImage, 
-      isFeatured 
+      isFeatured,
+      endDate 
     } = req.body;
 
     // Validate category
@@ -64,7 +66,9 @@ const createEvent = async (req, res) => {
       title,
       description,
       date,
+      endDate,
       location,
+      venue,
       category,
       ticketPrice,
       ticketQuantity,
@@ -91,25 +95,48 @@ const getAllEvents = async (req, res) => {
 
     let filter = {};
 
-    if (search) {
+    // Search
+    if (search && search.trim()) {
       filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } },
+        { location: { $regex: search.trim(), $options: 'i' } },
       ];
     }
-    if (category && category !== 'All') filter.category = category;
-    if (city) filter.location = { $regex: city, $options: 'i' };
-    
+
+    // Category
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // City/Location — search in location field
+    if (city && city.trim()) {
+      filter.location = { $regex: city.trim(), $options: 'i' };
+    }
+
+    // Price range
     if (minPrice || maxPrice) {
       filter.ticketPrice = {};
-      if (minPrice) filter.ticketPrice.$gte = Number(minPrice);
-      if (maxPrice) filter.ticketPrice.$lte = Number(maxPrice);
+      if (minPrice && minPrice !== '') filter.ticketPrice.$gte = Number(minPrice);
+      if (maxPrice && maxPrice !== '') filter.ticketPrice.$lte = Number(maxPrice);
     }
-    
+
+    // Date range — filter by event's date field
     if (startDate || endDate) {
-      filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      if (startDate && endDate) {
+        // Events that overlap with the selected range
+        filter.$and = [
+          { date: { $lte: new Date(endDate) } },
+          { $or: [
+            { endDate: { $gte: new Date(startDate) } },
+            { endDate: null, date: { $gte: new Date(startDate) } }
+          ]}
+        ];
+      } else if (startDate) {
+        filter.date = { $gte: new Date(startDate) };
+      } else if (endDate) {
+        filter.date = { $lte: new Date(endDate) };
+      }
     }
 
     let sortOption = { createdAt: -1 };
@@ -150,25 +177,48 @@ const getPublicEvents = async (req, res) => {
 
     let filter = { status: 'active' };
 
-    if (search) {
+    // Search
+    if (search && search.trim()) {
       filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } },
+        { location: { $regex: search.trim(), $options: 'i' } },
       ];
     }
-    if (category && category !== 'All') filter.category = category;
-    if (city) filter.location = { $regex: city, $options: 'i' };
-    
+
+    // Category
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+
+    // City/Location — search in location field
+    if (city && city.trim()) {
+      filter.location = { $regex: city.trim(), $options: 'i' };
+    }
+
+    // Price range
     if (minPrice || maxPrice) {
       filter.ticketPrice = {};
-      if (minPrice) filter.ticketPrice.$gte = Number(minPrice);
-      if (maxPrice) filter.ticketPrice.$lte = Number(maxPrice);
+      if (minPrice && minPrice !== '') filter.ticketPrice.$gte = Number(minPrice);
+      if (maxPrice && maxPrice !== '') filter.ticketPrice.$lte = Number(maxPrice);
     }
-    
+
+    // Date range — filter by event's date field
     if (startDate || endDate) {
-      filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      if (startDate && endDate) {
+        // Events that overlap with the selected range
+        filter.$and = [
+          { date: { $lte: new Date(endDate) } },
+          { $or: [
+            { endDate: { $gte: new Date(startDate) } },
+            { endDate: null, date: { $gte: new Date(startDate) } }
+          ]}
+        ];
+      } else if (startDate) {
+        filter.date = { $gte: new Date(startDate) };
+      } else if (endDate) {
+        filter.date = { $lte: new Date(endDate) };
+      }
     }
 
     let sortOption = { createdAt: -1 };
@@ -214,6 +264,11 @@ const updateEvent = async (req, res) => {
     }
 
     const updateData = { ...req.body };
+    
+    // Ensure endDate, location, and venue are allowed if provided
+    if (req.body.endDate) updateData.endDate = req.body.endDate;
+    if (req.body.location) updateData.location = req.body.location;
+    if (req.body.venue) updateData.venue = req.body.venue;
 
     // Sanitize updateData: Prevent overwriting sensitive fields or fields that might cause casting errors
     // (e.g., if frontend sends back populated objects)

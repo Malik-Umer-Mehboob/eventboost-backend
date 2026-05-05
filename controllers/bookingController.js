@@ -97,6 +97,9 @@ const initiateBooking = async (req, res) => {
 };
 
 const stripeWebhook = async (req, res) => {
+  // ✅ DB connect karo pehle
+  await require('../config/db')();
+
   const sig = req.headers['stripe-signature'];
   let stripeEvent;
 
@@ -131,7 +134,6 @@ const stripeWebhook = async (req, res) => {
       throw new Error('Stripe is not configured');
     }
 
-    // Added 300 second tolerance for local testing clock sync issues
     stripeEvent = stripe.webhooks.constructEvent(req.body, sig, webhookSecret, 300);
     console.log('✅ SIGNATURE VERIFIED: Event ID:', stripeEvent.id);
     console.log('💡 EVENT TYPE:', stripeEvent.type);
@@ -146,7 +148,6 @@ const stripeWebhook = async (req, res) => {
     const session = stripeEvent.data.object;
     console.log('📦 PROCESSING SESSION:', session.id);
 
-    // Metadata Check
     const { bookingId, eventId, userId, quantity: quantityStr } = session.metadata || {};
     console.log('📝 METADATA RECEIVED:', session.metadata);
 
@@ -163,35 +164,30 @@ const stripeWebhook = async (req, res) => {
     console.log(`📝 PARSED: Quantity(${quantity})`);
 
     try {
-      // 5. Idempotency Check (Avoid double processing)
       const existingTransaction = await Transaction.findOne({ stripeSessionId: session.id });
       if (existingTransaction) {
-        console.log(`ℹ️ IDEMPOTENCY: Session ${session.id} already processed. Skipping database updates.`);
+        console.log(`ℹ️ IDEMPOTENCY: Session ${session.id} already processed. Skipping.`);
         return res.status(200).json({ received: true });
       }
 
-      // 6. Find Booking
       console.log(`🔍 LOOKUP: Finding Booking ${bookingId}...`);
       let booking = await Booking.findById(bookingId);
       
       if (!booking) {
-        console.log(`⚠️ FALLBACK: Booking ID ${bookingId} not found, searching by stripeSessionId ${session.id}...`);
+        console.log(`⚠️ FALLBACK: Searching by stripeSessionId ${session.id}...`);
         booking = await Booking.findOne({ stripeSessionId: session.id });
       }
 
       if (!booking) {
-        console.error('❌ CRITICAL ERROR: Booking record NOT FOUND in MongoDB. Manual intervention required.');
+        console.error('❌ CRITICAL ERROR: Booking NOT FOUND in MongoDB.');
         throw new Error(`Booking ${bookingId} not found`);
       }
       console.log('✅ BOOKING FOUND:', booking._id);
 
-      // 7. Atomic Business Logic Updates
       console.log('🔄 STARTING DATABASE UPDATES...');
 
-      // Update Booking Status
-      console.log(`💰 STEP 1: Starting update for Booking ${booking._id}...`);
       if (booking.paymentStatus === 'paid') {
-        console.log(`ℹ️ SKIP: Booking ${booking._id} is already marked as paid.`);
+        console.log(`ℹ️ SKIP: Booking ${booking._id} already paid.`);
       } else {
         booking.paymentStatus = 'paid';
         booking.stripeSessionId = session.id;
@@ -202,10 +198,9 @@ const stripeWebhook = async (req, res) => {
           quantity
         }));
         await booking.save();
-        console.log('✅ STEP 1/5 SUCCESS: Booking status set to "paid"');
+        console.log('✅ STEP 1/5: Booking status set to paid');
       }
 
-      // Create Transaction Record
       await Transaction.create({
         user: userId,
         booking: booking._id,
@@ -218,10 +213,8 @@ const stripeWebhook = async (req, res) => {
         paymentMethod: session.payment_method_types[0],
         metadata: session.metadata
       });
-      console.log('✅ STEP 2/5: Transaction record created');
+      console.log('✅ STEP 2/5: Transaction created');
 
-      // Update Event Capacity and Attendees
-      console.log(`📈 STEP 3: Starting event seat decrement for Event ${eventId}...`);
       const event = await Event.findByIdAndUpdate(
         eventId, 
         { 
@@ -231,16 +224,11 @@ const stripeWebhook = async (req, res) => {
         { returnDocument: 'after' }
       );
 
-      if (!event) {
-        console.error(`❌ ERROR: Event ${eventId} not found during update!`);
-        throw new Error(`Event ${eventId} not found`);
-      }
-      console.log(`✅ STEP 3/5: Event capacity updated. New sold: ${event.soldTickets}/${event.ticketQuantity}`);
+      if (!event) throw new Error(`Event ${eventId} not found`);
+      console.log(`✅ STEP 3/5: Event capacity updated. Sold: ${event.soldTickets}/${event.ticketQuantity}`);
       
       broadcastAttendeeCount(eventId, event.soldTickets);
 
-      // Create Individual Tickets
-      console.log(`🎟 TICKETING: Generating ${quantity} individual ticket(s)...`);
       const tickets = [];
       for (let i = 0; i < quantity; i++) {
         const ticketNumber = `TKT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -256,10 +244,8 @@ const stripeWebhook = async (req, res) => {
         });
         tickets.push(ticket);
       }
-      console.log(`✅ STEP 4/5: ${tickets.length} Ticket documents created`);
+      console.log(`✅ STEP 4/5: ${tickets.length} ticket(s) created`);
 
-      // 8. Notifications
-      console.log('📧 NOTIFICATION: Sending confirmation email and app notification...');
       const populatedBooking = await Booking.findById(booking._id).populate('user event');
       if (populatedBooking && populatedBooking.user) {
         await sendTicketEmail(populatedBooking.user, populatedBooking.event, tickets);
@@ -275,23 +261,18 @@ const stripeWebhook = async (req, res) => {
         event: eventId
       });
 
-      // 9. Update Waitlist status if applicable
       await require('../models/Waitlist').findOneAndUpdate(
         { event: eventId, user: userId, status: 'notified' },
         { status: 'converted' }
       );
       
-      console.log('✅ STEP 5/5: Notifications triggered');
-
-      console.log('🎉 SUCCESS: Webhook processing completed flawlessly.');
+      console.log('✅ STEP 5/5: Notifications sent');
+      console.log('🎉 SUCCESS: Webhook processing complete!');
       console.log('----------------------------------------------------');
       return res.status(200).json({ received: true });
 
     } catch (dbError) {
-      console.error('❌ MONGODB ERROR (Full Stack):');
-      console.error(dbError.stack);
-      console.log('   Details:', dbError);
-      // Let Stripe retry by returning 500
+      console.error('❌ MONGODB ERROR:', dbError.stack);
       return res.status(500).json({ error: 'Database update failed', message: dbError.message });
     }
   } 
@@ -299,17 +280,16 @@ const stripeWebhook = async (req, res) => {
   if (stripeEvent.type === 'charge.refunded' || stripeEvent.type === 'payment_intent.amount_refunded') {
     const object = stripeEvent.data.object;
     const paymentIntentId = object.payment_intent || object.id;
-    console.log(`🔄 REFUND: Processing ${stripeEvent.type} for PI:`, paymentIntentId);
+    console.log(`🔄 REFUND: Processing for PI:`, paymentIntentId);
     
     try {
       await processRefundRollback(paymentIntentId);
-      console.log('✅ SUCCESS: Refund rollback completed');
+      console.log('✅ Refund rollback completed');
     } catch (refError) {
       console.error('❌ REFUND ERROR:', refError.message);
     }
   }
 
-  // Acknowledge other event types to avoid Stripe retries
   res.status(200).json({ received: true });
 };
 
